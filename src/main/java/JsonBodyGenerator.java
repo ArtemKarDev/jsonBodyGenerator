@@ -2,17 +2,11 @@ import io.swagger.v3.parser.core.models.SwaggerParseResult;
 import io.swagger.v3.oas.models.OpenAPI;
 import io.swagger.v3.oas.models.media.*;
 import io.swagger.v3.parser.OpenAPIV3Parser;
-import io.swagger.v3.parser.*;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.util.*;
 
-import io.swagger.v3.oas.models.media.Schema;
-
-import java.util.Map;
-import java.util.Random;
-
-public class OpenApiJsonGenerator {
+public class JsonBodyGenerator {
 
     // Генератор случайных значений
     private static final Random random = new Random();
@@ -20,14 +14,14 @@ public class OpenApiJsonGenerator {
 
     public static void main(String[] args) throws Exception {
         // Путь к файлу openApi.yaml
-        String openApiFilePath = "openApi.yaml";
+        String openApiFilePath = "openApiDict.yaml";
 
         // Парсим OpenAPI спецификацию
         OpenAPI openAPI = parseOpenApi(openApiFilePath);
 
-        // Пример генерации JSON для объекта "Pet"
-        Schema<?> petSchema = openAPI.getComponents().getSchemas().get("Pet");
-        Map<String, Object> petJsonBody = generateJsonBody(petSchema);
+        // Пример генерации JSON для объекта
+        Schema<?> petSchema = openAPI.getComponents().getSchemas().get("PartialUpsertRequest");
+        Map<String, Object> petJsonBody = generateJsonBody(petSchema, openAPI);
 
         // Выводим сгенерированный JSON
         String jsonBody = objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(petJsonBody);
@@ -45,7 +39,7 @@ public class OpenApiJsonGenerator {
     }
 
     // Метод для генерации JSON Body на основе схемы
-    private static Map<String, Object> generateJsonBody(Schema<?> schema) {
+    private static Map<String, Object> generateJsonBody(Schema<?> schema, OpenAPI openAPI) {
         Map<String, Object> jsonBody = new HashMap<>();
 
         if (schema instanceof ObjectSchema) {
@@ -55,7 +49,14 @@ public class OpenApiJsonGenerator {
                 String fieldName = entry.getKey();
                 Schema fieldSchema = entry.getValue();
 
-                jsonBody.put(fieldName, generateRandomValueForField(fieldSchema));
+                // Проверка на наличие ссылки на схему (через $ref)
+                if (fieldSchema.get$ref() != null) {
+                    String ref = fieldSchema.get$ref();
+                    String refName = ref.substring(ref.lastIndexOf("/") + 1);
+                    fieldSchema = openAPI.getComponents().getSchemas().get(refName); // Получаем схему по $ref
+                }
+
+                jsonBody.put(fieldName, generateRandomValueForField(fieldSchema, openAPI));
             }
         }
 
@@ -63,7 +64,7 @@ public class OpenApiJsonGenerator {
     }
 
     // Метод для генерации случайного значения для каждого типа
-    private static Object generateRandomValueForField(Schema<?> fieldSchema) {
+    private static Object generateRandomValueForField(Schema<?> fieldSchema, OpenAPI openAPI) {
         if (fieldSchema instanceof StringSchema) {
             // Генерация случайной строки
             int maxLength = ((StringSchema) fieldSchema).getMaxLength() != null ? ((StringSchema) fieldSchema).getMaxLength() : 20;
@@ -84,15 +85,31 @@ public class OpenApiJsonGenerator {
             if (itemsSchema != null) {
                 List<Object> randomArrayValues = new ArrayList<>();
                 int arrayLength = random.nextInt(5) + 1; // Длина массива от 1 до 5
+
+                // Проверка на наличие ссылки $ref в элементах массива
+                if (itemsSchema.get$ref() != null) {
+                    String ref = itemsSchema.get$ref();
+                    String refName = ref.substring(ref.lastIndexOf("/") + 1); // Получаем имя ссылки на схему
+                    itemsSchema = openAPI.getComponents().getSchemas().get(refName); // Извлекаем схему по $ref
+                }
+
                 for (int i = 0; i < arrayLength; i++) {
-                    randomArrayValues.add(generateRandomValueForField(itemsSchema));
+                    // Рекурсивно генерируем значения для каждого элемента массива
+                    randomArrayValues.add(generateRandomValueForField(itemsSchema, openAPI));
                 }
                 return randomArrayValues;
             }
+        } else if (fieldSchema instanceof ObjectSchema) {
+            // Рекурсивная обработка вложенного объекта
+            return generateJsonBody(fieldSchema, openAPI);
+        } else if (fieldSchema instanceof NumberSchema) {
+            // Генерация случайного числа (для типа number)
+            return generateRandomNumber();
         }
 
         return null;
     }
+
 
     // Генерация случайной строки указанной длины
     private static String generateRandomString(int maxLength) {
@@ -115,5 +132,10 @@ public class OpenApiJsonGenerator {
         int minute = random.nextInt(60);     // 0-59
         int second = random.nextInt(60);     // 0-59
         return String.format("%04d-%02d-%02dT%02d:%02d:%02dZ", year, month, day, hour, minute, second);
+    }
+
+    // Генерация случайного числа (для типа number)
+    private static double generateRandomNumber() {
+        return random.nextDouble() * 100; // Пример случайного числа от 0 до 100
     }
 }

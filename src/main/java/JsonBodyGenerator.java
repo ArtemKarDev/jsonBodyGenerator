@@ -14,7 +14,7 @@ public class JsonBodyGenerator {
 
     public static void main(String[] args) throws Exception {
         // Путь к файлу openApi.yaml
-        String openApiFilePath = "openApiDict.yaml";
+        String openApiFilePath = "openApi.yaml";
 
         // Парсим OpenAPI спецификацию
         OpenAPI openAPI = parseOpenApi(openApiFilePath);

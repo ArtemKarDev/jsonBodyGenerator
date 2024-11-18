@@ -1,12 +1,15 @@
-import io.swagger.v3.parser.core.models.SwaggerParseResult;
 import io.swagger.v3.oas.models.OpenAPI;
+import io.swagger.v3.oas.models.Operation;
+import io.swagger.v3.oas.models.PathItem;
+import io.swagger.v3.oas.models.parameters.Parameter;
 import io.swagger.v3.oas.models.media.*;
 import io.swagger.v3.parser.OpenAPIV3Parser;
+import io.swagger.v3.parser.core.models.SwaggerParseResult;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.util.*;
 
-public class JsonBodyGenerator {
+public class JsonGeneratorForPath {
 
     // Генератор случайных значений
     private static final Random random = new Random();
@@ -16,16 +19,19 @@ public class JsonBodyGenerator {
         // Путь к файлу openApi.yaml
         String openApiFilePath = "openapiCSOC.yaml";
 
+        // Путь и метод эндпоинта для генерации
+        String endpointPath = "/sources/upsert$";
+        String httpMethod = "post";
+
         // Парсим OpenAPI спецификацию
         OpenAPI openAPI = parseOpenApi(openApiFilePath);
 
-        // Пример генерации JSON для объекта
-        Schema<?> schema = openAPI.getComponents().getSchemas().get("ru.vtb.integration.mdm.cs.organization.model.primaryrecordwriter.v3.PartialUpsertRequest");
-        Map<String, Object> objectJsonBody = generateJsonBody(schema, openAPI);
+        // Генерация JSON Body для эндпоинта
+        Map<String, Object> jsonBody = generateJsonBodyForEndpoint(openAPI, endpointPath, httpMethod);
 
         // Выводим сгенерированный JSON
-        String jsonBody = objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(objectJsonBody);
-        System.out.println(jsonBody);
+        String jsonOutput = objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(jsonBody);
+        System.out.println(jsonOutput);
     }
 
     // Метод для парсинга OpenAPI спецификации
@@ -38,6 +44,46 @@ public class JsonBodyGenerator {
         return parseResult.getOpenAPI();
     }
 
+    // Метод для получения схемы из запроса эндпоинта
+    private static Map<String, Object> generateJsonBodyForEndpoint(OpenAPI openAPI, String endpointPath, String httpMethod) {
+        // Получаем операции для эндпоинта по пути
+        Map<String, PathItem> paths = openAPI.getPaths();
+        PathItem pathItem = paths.get(endpointPath);
+        if (pathItem == null) {
+            throw new RuntimeException("Не найден путь в OpenAPI: " + endpointPath);
+        }
+
+        // Получаем операцию по методу (POST, GET и т.д.)
+        Operation operation = null;
+        switch (httpMethod.toLowerCase()) {
+            case "post":
+                operation = pathItem.getPost();
+                break;
+            case "get":
+                operation = pathItem.getGet();
+                break;
+            case "put":
+                operation = pathItem.getPut();
+                break;
+            case "delete":
+                operation = pathItem.getDelete();
+                break;
+            default:
+                throw new RuntimeException("Неизвестный HTTP метод: " + httpMethod);
+        }
+
+        if (operation == null || operation.getRequestBody() == null || operation.getRequestBody().getContent().get("application/json") == null) {
+            throw new RuntimeException("Не найдено тело запроса для эндпоинта " + endpointPath);
+        }
+
+        // Извлекаем схему запроса из `requestBody`
+        MediaType mediaType = operation.getRequestBody().getContent().get("application/json");
+        Schema<?> requestSchema = mediaType.getSchema();
+
+        // Генерируем JSON тело для схемы
+        return generateJsonBody(requestSchema, openAPI);
+    }
+
     // Метод для генерации JSON Body на основе схемы
     private static Map<String, Object> generateJsonBody(Schema<?> schema, OpenAPI openAPI) {
         Map<String, Object> jsonBody = new HashMap<>();
@@ -48,13 +94,6 @@ public class JsonBodyGenerator {
             for (Map.Entry<String, Schema> entry : objectSchema.getProperties().entrySet()) {
                 String fieldName = entry.getKey();
                 Schema fieldSchema = entry.getValue();
-
-                // Проверка на наличие ссылки на схему (через $ref)
-                if (fieldSchema.get$ref() != null) {
-                    String ref = fieldSchema.get$ref();
-                    String refName = ref.substring(ref.lastIndexOf("/") + 1);
-                    fieldSchema = openAPI.getComponents().getSchemas().get(refName); // Получаем схему по $ref
-                }
 
                 jsonBody.put(fieldName, generateRandomValueForField(fieldSchema, openAPI));
             }
@@ -84,12 +123,12 @@ public class JsonBodyGenerator {
             Schema<?> itemsSchema = arraySchema.getItems();
             if (itemsSchema != null) {
                 List<Object> randomArrayValues = new ArrayList<>();
-                int arrayLength = random.nextInt(3) + 1; // Длина массива от 1 до 5
+                int arrayLength = random.nextInt(5) + 1; // Длина массива от 1 до 5
 
                 // Проверка на наличие ссылки $ref в элементах массива
                 if (itemsSchema.get$ref() != null) {
                     String ref = itemsSchema.get$ref();
-                    String refName = ref.substring(ref.lastIndexOf("/") + 1); // Получаем имя ссылки на схему
+                    String refName = ref.substring(ref.lastIndexOf("/") + 1); // Получаем имя ссылки
                     itemsSchema = openAPI.getComponents().getSchemas().get(refName); // Извлекаем схему по $ref
                 }
 
@@ -110,7 +149,6 @@ public class JsonBodyGenerator {
         return null;
     }
 
-
     // Генерация случайной строки указанной длины
     private static String generateRandomString(int maxLength) {
         String characters = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
@@ -124,7 +162,6 @@ public class JsonBodyGenerator {
 
     // Генерация случайной даты и времени
     private static String generateRandomDateTime() {
-        // Возвращаем случайную дату в формате ISO-8601
         int year = random.nextInt(20) + 2000; // 2000-2019
         int month = random.nextInt(12) + 1;  // 1-12
         int day = random.nextInt(28) + 1;    // 1-28
@@ -136,6 +173,6 @@ public class JsonBodyGenerator {
 
     // Генерация случайного числа (для типа number)
     private static double generateRandomNumber() {
-        return random.nextDouble() * 100; // Пример случайного числа от 0 до 100
+        return random.nextDouble() * 1000; // Генерация случайного числа от 0 до 1000
     }
 }

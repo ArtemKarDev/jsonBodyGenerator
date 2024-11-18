@@ -7,7 +7,7 @@ public class OpenApiEndpointExtractor {
 
     public static void main(String[] args) throws Exception {
         // Укажите путь к вашему файлу OpenAPI (например, "openApi.yaml")
-        String openApiFilePath = "openApi.yaml";
+        String openApiFilePath = "openapiCSOC.yaml";
 
         // Загружаем и парсим OpenAPI спецификацию
         OpenAPI openAPI = parseOpenApi(openApiFilePath);
